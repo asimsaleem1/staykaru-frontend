@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { LoginCredentials, RegisterData, User } from '../types/auth.types';
 
-// Create axios instance with base URL - Remove /api since backend doesn't have global prefix
+// Create axios instance with base URL
 const api = axios.create({
-  baseURL: 'https://staykaru-backend.herokuapp.com', // Updated: removed /api
+  baseURL: 'https://staykaru-backend-60ed08adb2a7.herokuapp.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
