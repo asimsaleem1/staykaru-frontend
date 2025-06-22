@@ -1,27 +1,3 @@
-// Booking API
-export const bookingAPI = {
-  // Get current user's bookings
-  getMyBookings: async (params = {}) => {
-    try {
-      const response = await apiClient.get('/bookings/my-bookings', { params });
-      return response.data;
-    } catch (error) {
-      // Fallback/mock data
-      return {
-        data: [
-          {
-            id: 1,
-            accommodationTitle: 'Sunset Villa',
-            status: 'confirmed',
-            checkIn: new Date().toISOString(),
-            checkOut: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-            totalAmount: 1200
-          }
-        ]
-      };
-    }
-  },
-};
 import apiClient from './apiClient';
 
 // Payment API

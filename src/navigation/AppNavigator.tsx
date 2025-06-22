@@ -11,6 +11,8 @@ import { USER_ROLES } from '../constants';
 // Auth screens
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 
 // Common screens
 import ProfileScreen from '../screens/common/ProfileScreen';
@@ -64,11 +66,13 @@ import FoodProviderPaymentHistoryScreen from '../screens/foodProvider/FoodProvid
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import AdminUsersScreen from '../screens/admin/AdminUsersScreen';
 import AdminLocationsScreen from '../screens/admin/AdminLocationsScreen';
-import AdminReviewsScreen from '../screens/admin/AdminReviewsScreen';
 import AdminUserDetailScreen from '../screens/admin/AdminUserDetailScreen';
 import AdminEditUserScreen from '../screens/admin/AdminEditUserScreen';
 import AdminSystemReportsScreen from '../screens/admin/AdminSystemReportsScreen';
 import AdminPaymentsScreen from '../screens/admin/AdminPaymentsScreen';
+import AdminSettingsScreen from '../screens/admin/AdminSettingsScreen';
+import AdminFoodProvidersScreen from '../screens/admin/AdminFoodProvidersScreen';
+import AdminBookingsScreen from '../screens/admin/AdminBookingsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -78,6 +82,8 @@ const AuthNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Login" component={LoginScreen} />
     <Stack.Screen name="Register" component={RegisterScreen} />
+    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+    <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
   </Stack.Navigator>
 );
 
@@ -205,8 +211,7 @@ const FoodProviderTabNavigator = () => (
 );
 
 // Admin Tab Navigator
-const AdminTabNavigator = () => (
-  <Tab.Navigator
+const AdminTabNavigator = () => (  <Tab.Navigator
     screenOptions={({ route }) => ({
       tabBarIcon: ({ focused, color, size }) => {
         let iconName: any = 'home';
@@ -220,11 +225,17 @@ const AdminTabNavigator = () => (
           case 'Locations':
             iconName = focused ? 'location' : 'location-outline';
             break;
-          case 'Reviews':
-            iconName = focused ? 'star' : 'star-outline';
+          case 'Food':
+            iconName = focused ? 'restaurant' : 'restaurant-outline';
             break;
-          case 'Profile':
-            iconName = focused ? 'person' : 'person-outline';
+          case 'Bookings':
+            iconName = focused ? 'calendar' : 'calendar-outline';
+            break;
+          case 'Reports':
+            iconName = focused ? 'analytics' : 'analytics-outline';
+            break;
+          case 'Settings':
+            iconName = focused ? 'settings' : 'settings-outline';
             break;
           default:
             iconName = 'home';
@@ -240,8 +251,10 @@ const AdminTabNavigator = () => (
     <Tab.Screen name="Dashboard" component={AdminDashboardScreen} />
     <Tab.Screen name="Users" component={AdminUsersScreen} />
     <Tab.Screen name="Locations" component={AdminLocationsScreen} />
-    <Tab.Screen name="Reviews" component={AdminReviewsScreen} />
-    <Tab.Screen name="Profile" component={ProfileScreen} />
+    <Tab.Screen name="Food" component={AdminFoodProvidersScreen} />
+    <Tab.Screen name="Bookings" component={AdminBookingsScreen} />
+    <Tab.Screen name="Reports" component={AdminSystemReportsScreen} />
+    <Tab.Screen name="Settings" component={AdminSettingsScreen} />
   </Tab.Navigator>
 );
 

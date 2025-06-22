@@ -13,16 +13,18 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { FormInput, FormButton } from '../../components/ui/FormElements';
 import { useAuth } from '../../context/AuthContext';
 import { AuthNavigationProp } from '../../types/navigation.types';
+import SocialLoginService from '../../services/socialLogin.service';
 
 const RegisterScreen = () => {
   const navigation = useNavigation<AuthNavigationProp>();
-  const { register, isLoading } = useAuth();
-  const [formData, setFormData] = useState({
+  const { register, socialLogin, isLoading } = useAuth();
+  const [socialLoading, setSocialLoading] = useState(false);  const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: '',
+    countryCode: '+92', // Required field with default value
     dateOfBirth: '',
     gender: 'male',
     role: 'student',
@@ -76,8 +78,8 @@ const RegisterScreen = () => {
     { id: 'female', label: 'Female' },
     { id: 'other', label: 'Other' }
   ];
-
   const validateForm = () => {
+    // Required fields validation (matches backend requirements)
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Please enter your full name');
       return false;
@@ -98,27 +100,21 @@ const RegisterScreen = () => {
       Alert.alert('Error', 'Please enter your phone number');
       return false;
     }
-    if (!formData.dateOfBirth.trim()) {
-      Alert.alert('Error', 'Please enter your date of birth (YYYY-MM-DD)');
+    if (!formData.countryCode.trim() || !formData.countryCode.match(/^\+\d{1,4}$/)) {
+      Alert.alert('Error', 'Please enter a valid country code (e.g., +92)');
       return false;
     }
-    if (!formData.address.street.trim() || !formData.address.city.trim()) {
-      Alert.alert('Error', 'Please enter your complete address');
+    if (!formData.gender.trim()) {
+      Alert.alert('Error', 'Please select your gender');
       return false;
     }
 
-    // Role-specific validation
-    if (formData.role === 'student' && !formData.university.trim()) {
-      Alert.alert('Error', 'Please enter your university name');
-      return false;
-    }
-    if (formData.role === 'landlord' && !formData.businessName.trim()) {
-      Alert.alert('Error', 'Please enter your business name');
-      return false;
-    }
-    if (formData.role === 'food_provider' && !formData.restaurantName.trim()) {
-      Alert.alert('Error', 'Please enter your restaurant name');
-      return false;
+    // Optional validation for better UX (but not required by backend)
+    if (formData.role === 'student' && formData.university.trim() === '') {
+      Alert.alert('Notice', 'University field is recommended for students', [
+        { text: 'Continue anyway', style: 'default' },
+        { text: 'Fill university', style: 'cancel' }
+      ], { cancelable: false });
     }
 
     return true;
@@ -261,6 +257,42 @@ const RegisterScreen = () => {
       Alert.alert('Error', error.message || 'Registration failed');
     }
   };
+  // Additional handlers for social registration
+  const handleGoogleRegistration = async () => {
+    setSocialLoading(true);
+    try {
+      const googleData = await SocialLoginService.signInWithGoogle();
+      
+      // Send the token to backend for verification and user creation/login
+      // Social logins always default to student role as per requirements
+      await socialLogin('google', googleData.token, 'student');
+      
+      // Successfully registered/logged in - navigation will be handled by AuthContext
+      // All social logins redirect to student dashboard
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Google registration failed');
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const handleFacebookRegistration = async () => {
+    setSocialLoading(true);
+    try {
+      const facebookData = await SocialLoginService.signInWithFacebook();
+      
+      // Send the token to backend for verification and user creation/login
+      // Social logins always default to student role as per requirements
+      await socialLogin('facebook', facebookData.token, 'student');
+      
+      // Successfully registered/logged in - navigation will be handled by AuthContext
+      // All social logins redirect to student dashboard
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Facebook registration failed');
+    } finally {
+      setSocialLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -285,14 +317,20 @@ const RegisterScreen = () => {
             autoCapitalize="none"
             value={formData.email}
             onChangeText={(text) => setFormData({ ...formData, email: text })}
-          />
-
-          <FormInput
+          />          <FormInput
             label="Phone"
             placeholder="Enter your phone number"
             keyboardType="phone-pad"
             value={formData.phone}
             onChangeText={(text) => setFormData({ ...formData, phone: text })}
+          />
+
+          <FormInput
+            label="Country Code *"
+            placeholder="e.g., +92, +1, +44"
+            keyboardType="phone-pad"
+            value={formData.countryCode}
+            onChangeText={(text) => setFormData({ ...formData, countryCode: text })}
           />
 
           <FormInput
@@ -433,14 +471,35 @@ const RegisterScreen = () => {
             />
           </View>
 
-          {renderRoleSpecificFields()}
-
-          <FormButton
+          {renderRoleSpecificFields()}          <FormButton
             title={isLoading ? "Creating Account..." : "Create Account"}
             onPress={handleSubmit}
-            disabled={isLoading}
+            disabled={isLoading || socialLoading}
             loading={isLoading}
           />
+
+          {/* Social registration buttons */}
+          <View style={styles.socialLogin}>
+            <Text style={styles.orText}>Or register with</Text>
+            <View style={styles.socialButtons}>
+              <TouchableOpacity 
+                style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                onPress={handleGoogleRegistration}
+                disabled={isLoading || socialLoading}
+              >
+                <Ionicons name="logo-google" size={24} color="#DB4437" />
+                <Text style={styles.socialButtonText}>Google</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                onPress={handleFacebookRegistration}
+                disabled={isLoading || socialLoading}
+              >
+                <Ionicons name="logo-facebook" size={24} color="#4267B2" />
+                <Text style={styles.socialButtonText}>Facebook</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           <TouchableOpacity 
             onPress={() => navigation.navigate('Login')}
@@ -563,10 +622,48 @@ const styles = StyleSheet.create({
   addressRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  addressHalf: {
+  },  addressHalf: {
     flex: 1,
     marginHorizontal: 5,
+  },
+  socialLogin: {
+    marginTop: 20,
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  orText: {
+    color: '#7f8c8d',
+    marginBottom: 12,
+    fontSize: 15,
+  },
+  socialButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  socialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    flex: 1,
+    marginHorizontal: 8,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },  socialButtonText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  socialButtonDisabled: {
+    opacity: 0.6,
   },
 });
 

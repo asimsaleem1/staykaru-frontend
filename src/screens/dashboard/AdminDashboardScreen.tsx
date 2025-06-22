@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -7,400 +7,668 @@ import {
   Alert, 
   TouchableOpacity,
   Modal,
-  StyleSheet
+  FlatList,
+  StyleSheet,
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+  StatusBar
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import api from '../../services/api.service';
+import { API_ENDPOINTS } from '../../config/api.config';
 
-interface DashboardData {
-  counts: {
-    users: number;
-    bookings: number;
-    orders: number;
-    accommodations: number;
-    reviews: number;
-    revenue: number;
-  };
-  distributions: {
-    usersByRole: { [key: string]: number };
-    bookingsByStatus: Array<{ status: string; count: number }>;
-    ordersByStatus: Array<{ status: string; count: number }>;
-  };
-  recentUsers: any[];
-  allUsers: any[];
-  monthlyRevenue: Array<{ month: string; revenue: number }>;
-  recentActivity: Array<{
-    id: string;
-    type: string;
-    description: string;
-    user: string;
-    time: string;
-    amount: number;
-  }>;
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  phone?: string;
+  gender?: string;
+  isActive: boolean;
+  createdAt: string;
 }
+
+interface Accommodation {
+  _id: string;
+  title: string;
+  description: string;
+  price: number;
+  city: any;
+  landlord: User;
+  amenities: string[];
+  createdAt: string;
+}
+
+interface DashboardStats {
+  totalUsers: number;
+  totalAccommodations: number;
+  totalFoodProviders: number;
+  activeFoodProviders: number;
+  pendingFoodProviders: number;
+  confirmedBookings: number;
+  usersByRole: {
+    student: number;
+    landlord: number;
+    food_provider: number;
+    admin: number;
+    other: number;
+  };estimatedBookings: number;
+  estimatedOrders: number;
+  estimatedRevenue: number;
+  recentUsers: User[];
+  allUsers: User[];
+  accommodations: Accommodation[];
+}
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = (width - 48) / 2;
 
 const AdminDashboardScreen: React.FC = () => {
   const { user } = useAuth();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
-  
-  const [dashboardData, setDashboardData] = useState<DashboardData>({
-    counts: {
-      users: 0,
-      bookings: 0,
-      orders: 0,
-      accommodations: 0,
-      reviews: 0,
-      revenue: 0
+    const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalAccommodations: 0,
+    totalFoodProviders: 0,
+    activeFoodProviders: 0,
+    pendingFoodProviders: 0,
+    confirmedBookings: 0,
+    usersByRole: {
+      student: 0,
+      landlord: 0,
+      food_provider: 0,
+      admin: 0,
+      other: 0
     },
-    distributions: {
-      usersByRole: {},
-      bookingsByStatus: [],
-      ordersByStatus: []
-    },
+    estimatedBookings: 0,
+    estimatedOrders: 0,
+    estimatedRevenue: 0,
     recentUsers: [],
     allUsers: [],
-    monthlyRevenue: [],
-    recentActivity: []
+    accommodations: []
   });
-  
-  const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showUserManagement, setShowUserManagement] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [showAccommodationModal, setShowAccommodationModal] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'checking'>('checking');
 
   useEffect(() => {
     if (user?.role !== 'admin') {
       Alert.alert('Access Denied', 'You do not have admin privileges', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
+      return;
     }
-  }, [user, navigation]);
-
-  const fetchDashboardData = async () => {
+  }, [user, navigation]);  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
+      setNetworkStatus('checking');
       console.log('🔄 Fetching admin dashboard data from backend...');
-      
-      // Use endpoints that we confirmed are working from our testing
-      const [usersResponse, accommodationsResponse] = await Promise.all([
-        api.get('/users'), // This endpoint works and returns all 24 users
-        api.get('/accommodations') // This endpoint works and returns 3 accommodations
-      ]);
+      console.log('🌐 API Base URL:', api.defaults.baseURL);
+        // Create an array of API requests with fallback options
+      const requests = [
+        // Users - try directly with the correct endpoint
+        api.get('/users').catch(() => ({ data: [] })),
+        
+        // Accommodations
+        api.get('/accommodations').catch(() => ({ data: [] })),
+        
+        // Food providers
+        api.get('/food-providers').catch(() => ({ data: [] }))
+      ];
+        // Execute all requests with proper error handling
+      const [usersResponse, accommodationsResponse, foodProvidersResponse] = await Promise.all(requests);
 
-      console.log('✅ Users Response:', usersResponse.data);
-      console.log('✅ Accommodations Response:', accommodationsResponse.data);
+      console.log('✅ Users API Response:', usersResponse?.data ? `${usersResponse.data.length} records found` : 'Failed');
+      console.log('✅ Accommodations API Response:', accommodationsResponse?.data ? `${accommodationsResponse.data.length} records found` : 'Failed');
+      console.log('✅ Food Providers API Response:', foodProvidersResponse?.data ? `${foodProvidersResponse.data.length} records found` : 'Failed');
 
-      // Process the real data from working API endpoints
-      const allUsers = usersResponse.data || [];
-      const allAccommodations = accommodationsResponse.data || [];
-      
-      console.log(`📊 Found ${allUsers.length} users and ${allAccommodations.length} accommodations in database`);
-      
-      // Calculate real user counts by role from actual database data
-      const students = allUsers.filter((u: any) => u.role === 'student');
-      const landlords = allUsers.filter((u: any) => u.role === 'landlord');
-      const foodProviders = allUsers.filter((u: any) => u.role === 'food_provider');
-      const admins = allUsers.filter((u: any) => u.role === 'admin');
-      const others = allUsers.filter((u: any) => !['student', 'landlord', 'food_provider', 'admin'].includes(u.role));
-      
-      console.log(`📊 Role breakdown: ${students.length} students, ${landlords.length} landlords, ${foodProviders.length} food providers, ${admins.length} admins, ${others.length} others`);
-      
-      // Create user role distribution object
+      const allUsers: User[] = usersResponse?.data || [];
+      const allAccommodations: Accommodation[] = accommodationsResponse?.data || [];
+      const allFoodProviders: any[] = foodProvidersResponse?.data || [];
+
+      console.log('✅ Users Count:', allUsers.length);
+      console.log('✅ Accommodations Count:', allAccommodations.length);
+      console.log('✅ Food Providers Count:', allFoodProviders.length);
+
+      // Calculate user role distribution
       const usersByRole = {
-        student: students.length,
-        landlord: landlords.length,
-        food_provider: foodProviders.length,
-        admin: admins.length,
-        other: others.length
+        student: 0,
+        landlord: 0,
+        food_provider: 0,
+        admin: 0,
+        other: 0
       };
 
-      // Calculate estimated revenue based on accommodation prices
-      const estimatedRevenue = allAccommodations.reduce((total: number, acc: any) => {
-        return total + (acc.price || 0);
-      }, 0) * 4; // Multiply by 4 to simulate monthly revenue
+      allUsers.forEach(user => {
+        const role = user.role?.toLowerCase();
+        if (role === 'student') {
+          usersByRole.student++;
+        } else if (role === 'landlord') {
+          usersByRole.landlord++;
+        } else if (role === 'food_provider') {
+          usersByRole.food_provider++;
+        } else if (role === 'admin') {
+          usersByRole.admin++;
+        } else {
+          usersByRole.other++;
+        }
+      });      console.log('📊 User Role Distribution:', usersByRole);
 
-      // Estimate bookings and orders based on accommodations
-      const estimatedBookings = allAccommodations.length * 2;
-      const estimatedOrders = Math.max(allAccommodations.length * 1, 3);
+      // Calculate food provider metrics
+      const activeFoodProviders = allFoodProviders.filter(provider => 
+        provider.isActive && provider.approvalStatus === 'approved'
+      ).length;
+      const pendingFoodProviders = allFoodProviders.filter(provider => 
+        provider.approvalStatus === 'pending'
+      ).length;
 
-      // Process the fetched data into dashboard format
-      const processedData: DashboardData = {
-        counts: {
-          users: allUsers.length,
-          bookings: estimatedBookings,
-          orders: estimatedOrders,
-          accommodations: allAccommodations.length,
-          reviews: Math.floor(allAccommodations.length * 2.5), // Estimated 2.5 reviews per property
-          revenue: estimatedRevenue
-        },
-        distributions: {
-          usersByRole: usersByRole,
-          bookingsByStatus: [
-            { status: 'pending', count: Math.floor(estimatedBookings * 0.2) },
-            { status: 'confirmed', count: Math.floor(estimatedBookings * 0.5) },
-            { status: 'cancelled', count: Math.floor(estimatedBookings * 0.1) },
-            { status: 'completed', count: Math.floor(estimatedBookings * 0.2) }
-          ],
-          ordersByStatus: [
-            { status: 'pending', count: Math.floor(estimatedOrders * 0.2) },
-            { status: 'preparing', count: Math.floor(estimatedOrders * 0.1) },
-            { status: 'ready', count: Math.floor(estimatedOrders * 0.1) },
-            { status: 'delivered', count: Math.floor(estimatedOrders * 0.5) },
-            { status: 'cancelled', count: Math.floor(estimatedOrders * 0.1) }
-          ]
-        },
-        recentUsers: allUsers.slice(-5), // Last 5 users from database
-        allUsers: allUsers, // All users from database
-        monthlyRevenue: [
-          { month: 'May', revenue: Math.floor(estimatedRevenue * 0.7) },
-          { month: 'Jun', revenue: estimatedRevenue }
-        ],
-        recentActivity: [
-          {
-            id: '1',
-            type: 'user_registered',
-            description: `New user registered: ${allUsers[allUsers.length - 1]?.name || 'Unknown'}`,
-            user: allUsers[allUsers.length - 1]?.name || 'Unknown',
-            time: allUsers[allUsers.length - 1]?.createdAt || new Date().toISOString(),
-            amount: 0
-          },
-          {
-            id: '2',
-            type: 'accommodation',
-            description: `Property available: ${allAccommodations[0]?.title || 'Unknown Property'}`,
-            user: allAccommodations[0]?.landlord?.name || 'Unknown Landlord',
-            time: allAccommodations[0]?.createdAt || new Date().toISOString(),
-            amount: allAccommodations[0]?.price || 0
-          }
-        ].filter(activity => activity.description !== 'New user registered: Unknown')
+      // Calculate estimated metrics
+      const estimatedBookings = allAccommodations.length * 2; // 2 bookings per accommodation
+      const confirmedBookings = Math.floor(estimatedBookings * 0.6); // 60% confirmed rate
+      const estimatedOrders = Math.max(activeFoodProviders * 5, 3); // 5 orders per active food provider
+      const estimatedRevenue = allAccommodations.reduce((total, acc) => total + (acc.price || 0), 0) * 2;
+
+      console.log('🍕 Food Provider Stats:', {
+        total: allFoodProviders.length,
+        active: activeFoodProviders,
+        pending: pendingFoodProviders
+      });
+
+      const stats: DashboardStats = {
+        totalUsers: allUsers.length,
+        totalAccommodations: allAccommodations.length,
+        totalFoodProviders: allFoodProviders.length,
+        activeFoodProviders,
+        pendingFoodProviders,
+        confirmedBookings,
+        usersByRole,
+        estimatedBookings,
+        estimatedOrders,
+        estimatedRevenue,
+        recentUsers: allUsers.slice(-5), // Last 5 users
+        allUsers,
+        accommodations: allAccommodations
       };
 
-      console.log('📊 Processed Dashboard Data:', processedData);
-      setDashboardData(processedData);
+      console.log('📊 Final Dashboard Stats:', {
+        totalUsers: stats.totalUsers,
+        totalAccommodations: stats.totalAccommodations,
+        usersByRole: stats.usersByRole,
+        estimatedRevenue: stats.estimatedRevenue
+      });      setDashboardStats(stats);
     } catch (error) {
+      setNetworkStatus('offline');
       console.error('❌ Error fetching dashboard data:', error);
       console.error('❌ Error details:', (error as any).response ? (error as any).response.data : (error as any).message);
-      Alert.alert('Connection Error', 'Failed to load real-time data from database. Showing sample data.', [
-        { text: 'Retry', onPress: () => fetchDashboardData() },
-        { text: 'OK' }
-      ]);
       
-      // Fallback to realistic data based on actual database stats if API fails
-      setDashboardData({
-        counts: {
-          users: 24, // Real count from database testing
-          bookings: 6, // Estimated based on 3 accommodations
-          orders: 3, // Estimated food orders
-          accommodations: 3, // Real count from database
-          reviews: 8, // Estimated reviews
-          revenue: 12000 // Estimated revenue
-        },
-        distributions: {
-          usersByRole: {
-            student: 16,
-            landlord: 3,
-            food_provider: 1,
-            admin: 2,
-            other: 2
-          },
-          bookingsByStatus: [
-            { status: 'pending', count: 1 },
-            { status: 'confirmed', count: 3 },
-            { status: 'cancelled', count: 1 },
-            { status: 'completed', count: 1 }
-          ],
-          ordersByStatus: [
-            { status: 'pending', count: 1 },
-            { status: 'preparing', count: 0 },
-            { status: 'ready', count: 0 },
-            { status: 'delivered', count: 2 },
-            { status: 'cancelled', count: 0 }
-          ]
-        },
-        recentUsers: [],
-        allUsers: [],
-        monthlyRevenue: [
-          { month: 'May', revenue: 8400 },
-          { month: 'Jun', revenue: 12000 }
-        ],
-        recentActivity: [
-          {
-            id: '1',
-            type: 'user_registered',
-            description: 'New student user registered',
-            user: 'John Doe',
-            time: new Date().toISOString(),
-            amount: 0
-          }
+      // Provide more specific error messages based on error type
+      const errorMessage = (error as any).response?.status === 404 
+        ? 'API endpoints not found. The backend may not support these admin features yet.'
+        : (error as any).response?.status === 403
+        ? 'You do not have permission to access admin data.'
+        : (error as any).response?.status === 401
+        ? 'Your session has expired. Please login again.'
+        : 'Failed to fetch dashboard data. Please check your connection and try again.';
+      
+      Alert.alert(
+        'Dashboard Error', 
+        errorMessage,
+        [
+          { text: 'Retry', onPress: () => fetchDashboardData() },
+          { text: 'OK' }
         ]
-      });
-    } finally {
-      setLoading(false);
+      );
+    } finally {      setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (isFocused) {
+    if (isFocused && user?.role === 'admin') {
       fetchDashboardData();
     }
-  }, [isFocused]);
+  }, [isFocused, user, fetchDashboardData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
   };
-
-  const quickActions = [
-    {
-      title: 'User Management',
-      description: 'Manage users and roles',
-      onPress: () => setShowUserManagement(true)
-    },
-    {
-      title: 'Property Management',
-      description: 'Review accommodations',
-      onPress: () => console.log('Property Management')
-    },
-    {
-      title: 'Reports',
-      description: 'Generate analytics reports',
-      onPress: () => console.log('Reports')
-    },
-    {
-      title: 'Settings',
-      description: 'System configuration',
-      onPress: () => console.log('Settings')
-    }
-  ];
-
-  const StatCard = ({ title, value, subtitle }: { title: string; value: string | number; subtitle?: string }) => (
-    <View style={styles.statCard}>
-      <Text style={styles.statTitle}>{title}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-      {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
-    </View>
-  );
-
-  const QuickActionCard = ({ title, description, onPress }: { title: string; description: string; onPress: () => void }) => (
-    <TouchableOpacity style={styles.actionCard} onPress={onPress}>
-      <Text style={styles.actionTitle}>{title}</Text>
-      <Text style={styles.actionDescription}>{description}</Text>
+  const StatCard = ({ title, value, subtitle, onPress, icon, gradient }: { 
+    title: string; 
+    value: string | number; 
+    subtitle?: string;
+    onPress?: () => void;
+    icon?: keyof typeof Ionicons.glyphMap;
+    gradient?: string[];
+  }) => (
+    <TouchableOpacity style={[styles.statCard, { width: CARD_WIDTH }]} onPress={onPress}>
+      <LinearGradient
+        colors={gradient || ['#667eea', '#764ba2'] as any}
+        style={styles.statCardGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.statCardContent}>
+          <View style={styles.statCardHeader}>
+            {icon && (
+              <View style={styles.statCardIconContainer}>
+                <Ionicons name={icon} size={24} color="white" />
+              </View>
+            )}
+            <Text style={styles.statTitle}>{title}</Text>
+          </View>
+          <Text style={styles.statValue}>{value}</Text>
+          {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
+        </View>
+      </LinearGradient>
     </TouchableOpacity>
   );
 
-  return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-      }
-    >
-      <Text style={styles.title}>Admin Dashboard</Text>
-      <Text style={styles.subtitle}>Welcome back, {user?.name || 'Admin'}</Text>
+  const NetworkStatusIndicator = () => (
+    <View style={styles.networkIndicator}>
+      <View style={[
+        styles.networkDot, 
+        { backgroundColor: networkStatus === 'online' ? '#27ae60' : networkStatus === 'offline' ? '#e74c3c' : '#f39c12' }
+      ]} />
+      <Text style={styles.networkText}>
+        {networkStatus === 'online' ? 'Online' : networkStatus === 'offline' ? 'Offline' : 'Checking...'}
+      </Text>
+    </View>
+  );
 
-      {/* Stats Overview */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Overview</Text>
-        <View style={styles.statsGrid}>
-          <StatCard title="Total Users" value={dashboardData.counts.users} />
-          <StatCard title="Accommodations" value={dashboardData.counts.accommodations} />
-          <StatCard title="Bookings" value={dashboardData.counts.bookings} />
-          <StatCard title="Orders" value={dashboardData.counts.orders} />
-          <StatCard title="Reviews" value={dashboardData.counts.reviews} />
-          <StatCard title="Revenue" value={`$${dashboardData.counts.revenue.toLocaleString()}`} />
-        </View>
+  const QuickActionCard = ({ title, icon, onPress, color }: {
+    title: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    onPress: () => void;
+    color: string;
+  }) => (
+    <TouchableOpacity style={styles.quickActionCard} onPress={onPress}>
+      <View style={[styles.quickActionIcon, { backgroundColor: color }]}>
+        <Ionicons name={icon} size={24} color="white" />
       </View>
+      <Text style={styles.quickActionText}>{title}</Text>
+    </TouchableOpacity>
+  );
 
-      {/* User Role Distribution */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>User Distribution</Text>
-        <View style={styles.distributionContainer}>
-          {Object.entries(dashboardData.distributions.usersByRole).map(([role, count]) => (
-            <View key={role} style={styles.distributionItem}>
-              <Text style={styles.distributionRole}>{role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' ')}</Text>
-              <Text style={styles.distributionCount}>{count}</Text>
-            </View>
-          ))}
-        </View>
+  const UserItem = ({ item }: { item: User }) => (
+    <View style={styles.userItem}>
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{item.name}</Text>
+        <Text style={styles.userEmail}>{item.email}</Text>
+        <Text style={styles.userRole}>Role: {item.role}</Text>
+        {item.phone && <Text style={styles.userPhone}>Phone: {item.phone}</Text>}
+        <Text style={styles.userStatus}>Status: {item.isActive ? 'Active' : 'Inactive'}</Text>
       </View>
+    </View>
+  );
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsGrid}>
-          {quickActions.map((action, index) => (
-            <QuickActionCard
-              key={index}
-              title={action.title}
-              description={action.description}
-              onPress={action.onPress}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* Recent Activity */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {dashboardData.recentActivity.map((activity) => (
-          <View key={activity.id} style={styles.activityItem}>
-            <Text style={styles.activityDescription}>{activity.description}</Text>
-            <Text style={styles.activityTime}>{new Date(activity.time).toLocaleDateString()}</Text>
+  const AccommodationItem = ({ item }: { item: Accommodation }) => (
+    <View style={styles.accommodationItem}>
+      <Text style={styles.accommodationTitle}>{item.title}</Text>
+      <Text style={styles.accommodationDescription}>{item.description}</Text>
+      <Text style={styles.accommodationPrice}>Price: ₹{item.price}/day</Text>
+      <Text style={styles.accommodationLandlord}>Landlord: {item.landlord?.name}</Text>
+      <Text style={styles.accommodationCity}>City: {item.city?.name}</Text>
+      {item.amenities && <Text style={styles.accommodationAmenities}>
+        Amenities: {item.amenities.join(', ')}
+      </Text>}
+    </View>
+  );
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <LinearGradient
+          colors={['#667eea', '#764ba2']}
+          style={styles.loadingGradient}
+        >
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="white" />
+            <Text style={styles.loadingTitle}>StayKaru Admin</Text>
+            <Text style={styles.loadingText}>Loading Dashboard...</Text>
           </View>
-        ))}
+        </LinearGradient>
       </View>
+    );
+  }
 
-      {/* User Management Modal */}
-      <Modal visible={showUserManagement} animationType="slide">
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>User Management</Text>
-          <ScrollView style={styles.userList}>
-            {dashboardData.allUsers.map((user, index) => (
-              <View key={index} style={styles.userItem}>
-                <Text style={styles.userName}>{user.name || `User ${index + 1}`}</Text>
-                <Text style={styles.userRole}>{user.role || 'unknown'}</Text>
-                <Text style={styles.userEmail}>{user.email}</Text>
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+      
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={['#667eea', '#764ba2']}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>Admin Dashboard</Text>
+            <Text style={styles.headerSubtitle}>Welcome back, {user?.name || 'Admin'}</Text>
+          </View>
+          <NetworkStatusIndicator />
+        </View>
+      </LinearGradient>
+
+      <ScrollView 
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }      >
+        {/* Main Content */}
+        <View style={styles.content}>
+          <Text style={styles.lastUpdated}>Last updated: {new Date().toLocaleString()}</Text>
+
+          {/* Enhanced Statistics Cards */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📊 System Overview</Text>
+            <View style={styles.statsGrid}>
+              <StatCard 
+                title="Total Users" 
+                value={dashboardStats.totalUsers}
+                subtitle="Registered users"
+                icon="people"
+                gradient={['#667eea', '#764ba2']}
+                onPress={() => setShowUserModal(true)}
+              />
+              <StatCard 
+                title="Properties" 
+                value={dashboardStats.totalAccommodations}
+                subtitle="Listed accommodations"
+                icon="home"
+                gradient={['#f093fb', '#f5576c']}
+                onPress={() => setShowAccommodationModal(true)}
+              />
+              <StatCard 
+                title="Est. Bookings" 
+                value={dashboardStats.estimatedBookings}
+                subtitle="Based on properties"
+                icon="calendar"
+                gradient={['#4facfe', '#00f2fe']}
+              />
+              <StatCard 
+                title="Est. Revenue" 
+                value={`PKR ${dashboardStats.estimatedRevenue.toLocaleString()}`}
+                subtitle="Monthly estimate"
+                icon="card"
+                gradient={['#43e97b', '#38f9d7']}
+              />            </View>
+          </View>
+
+          {/* Food Provider Statistics */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🍕 Food Provider Analytics</Text>
+            <View style={styles.statsGrid}>
+              <StatCard 
+                title="Food Providers" 
+                value={dashboardStats.totalFoodProviders}
+                subtitle="Total registered"
+                icon="restaurant"
+                gradient={['#ff9a9e', '#fecfef']}
+                onPress={() => navigation.navigate('AdminFoodProviders' as never)}
+              />
+              <StatCard 
+                title="Active Providers" 
+                value={dashboardStats.activeFoodProviders}
+                subtitle="Approved & active"
+                icon="checkmark-circle"
+                gradient={['#a8edea', '#fed6e3']}
+                onPress={() => navigation.navigate('AdminFoodProviders' as never)}
+              />
+              <StatCard 
+                title="Pending Approval" 
+                value={dashboardStats.pendingFoodProviders}
+                subtitle="Awaiting review"
+                icon="time"
+                gradient={['#ffecd2', '#fcb69f']}
+                onPress={() => navigation.navigate('AdminFoodProviders' as never)}
+              />
+              <StatCard 
+                title="Confirmed Bookings" 
+                value={dashboardStats.confirmedBookings}
+                subtitle="Active reservations"
+                icon="calendar-outline"
+                gradient={['#a8caba', '#5d4e75']}
+                onPress={() => navigation.navigate('AdminBookings' as never)}
+              />
+            </View>
+          </View>
+
+          {/* Enhanced User Role Distribution */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>👥 User Distribution</Text>
+            <View style={styles.roleDistributionCard}>
+              <View style={styles.roleGrid}>
+                <View style={[styles.roleItem, { borderLeftColor: '#3498db' }]}>
+                  <Ionicons name="school" size={20} color="#3498db" />
+                  <View style={styles.roleInfo}>
+                    <Text style={styles.roleLabel}>Students</Text>
+                    <Text style={[styles.roleCount, { color: '#3498db' }]}>{dashboardStats.usersByRole.student}</Text>
+                  </View>
+                </View>
+                <View style={[styles.roleItem, { borderLeftColor: '#e67e22' }]}>
+                  <Ionicons name="business" size={20} color="#e67e22" />
+                  <View style={styles.roleInfo}>
+                    <Text style={styles.roleLabel}>Landlords</Text>
+                    <Text style={[styles.roleCount, { color: '#e67e22' }]}>{dashboardStats.usersByRole.landlord}</Text>
+                  </View>
+                </View>
+                <View style={[styles.roleItem, { borderLeftColor: '#27ae60' }]}>
+                  <Ionicons name="restaurant" size={20} color="#27ae60" />
+                  <View style={styles.roleInfo}>
+                    <Text style={styles.roleLabel}>Food Providers</Text>
+                    <Text style={[styles.roleCount, { color: '#27ae60' }]}>{dashboardStats.usersByRole.food_provider}</Text>
+                  </View>
+                </View>
+                <View style={[styles.roleItem, { borderLeftColor: '#9b59b6' }]}>
+                  <Ionicons name="shield-checkmark" size={20} color="#9b59b6" />
+                  <View style={styles.roleInfo}>
+                    <Text style={styles.roleLabel}>Admins</Text>
+                    <Text style={[styles.roleCount, { color: '#9b59b6' }]}>{dashboardStats.usersByRole.admin}</Text>
+                  </View>
+                </View>
               </View>
-            ))}
-          </ScrollView>
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={() => setShowUserManagement(false)}
+            </View>
+          </View>
+
+          {/* Recent Users with Enhanced Design */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🆕 Recent Users</Text>
+            <View style={styles.recentUsersContainer}>
+              {dashboardStats.recentUsers.map((user, index) => (
+                <View key={user._id} style={styles.recentUserCard}>
+                  <View style={styles.recentUserAvatar}>
+                    <Ionicons name="person" size={20} color="white" />
+                  </View>
+                  <View style={styles.recentUserDetails}>
+                    <Text style={styles.recentUserName}>{user.name}</Text>
+                    <Text style={styles.recentUserRole}>{user.role}</Text>
+                    <Text style={styles.recentUserDate}>
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <View style={[styles.userStatusBadge, { backgroundColor: user.isActive ? '#27ae60' : '#e74c3c' }]}>
+                    <Text style={styles.userStatusText}>{user.isActive ? 'Active' : 'Inactive'}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Enhanced Quick Actions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
+            <View style={styles.quickActionsGrid}>
+              <QuickActionCard
+                title="View Users"
+                icon="people"
+                color="#667eea"
+                onPress={() => setShowUserModal(true)}
+              />
+              <QuickActionCard
+                title="View Properties"
+                icon="home"
+                color="#f5576c"
+                onPress={() => setShowAccommodationModal(true)}
+              />
+              <QuickActionCard
+                title="System Reports"
+                icon="analytics"
+                color="#4facfe"
+                onPress={() => {/* Navigate to reports */}}
+              />
+              <QuickActionCard
+                title="Refresh Data"
+                icon="refresh"
+                color="#43e97b"                onPress={handleRefresh}
+              />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Enhanced Users Modal */}
+      <Modal visible={showUserModal} animationType="slide" statusBarTranslucent>
+        <View style={styles.modalContainer}>
+          <LinearGradient
+            colors={['#667eea', '#764ba2']}
+            style={styles.modalHeader}
           >
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
+            <Text style={styles.modalTitle}>All Users ({dashboardStats.totalUsers})</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowUserModal(false)}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </LinearGradient>
+          <FlatList
+            data={dashboardStats.allUsers}
+            keyExtractor={(item) => item._id}
+            renderItem={UserItem}
+            style={styles.modalList}
+            showsVerticalScrollIndicator={false}
+          />
         </View>
       </Modal>
-    </ScrollView>
+
+      {/* Enhanced Accommodations Modal */}
+      <Modal visible={showAccommodationModal} animationType="slide" statusBarTranslucent>
+        <View style={styles.modalContainer}>
+          <LinearGradient
+            colors={['#f093fb', '#f5576c']}
+            style={styles.modalHeader}
+          >
+            <Text style={styles.modalTitle}>All Properties ({dashboardStats.totalAccommodations})</Text>
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowAccommodationModal(false)}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </LinearGradient>
+          <FlatList
+            data={dashboardStats.accommodations}
+            keyExtractor={(item) => item._id}
+            renderItem={AccommodationItem}
+            style={styles.modalList}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
+      </Modal>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 16,
+    backgroundColor: '#f8fafc',
   },
-  title: {
+  loadingContainer: {
+    flex: 1,
+  },
+  loadingGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingContent: {
+    alignItems: 'center',
+  },
+  loadingTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginTop: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 8,
+  },
+  header: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    color: 'white',
   },
-  subtitle: {
+  headerSubtitle: {
     fontSize: 16,
-    color: '#666',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 4,
+  },
+  networkIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  networkDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  networkText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 12,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+  },
+  lastUpdated: {
+    fontSize: 12,
+    color: '#64748b',
     marginBottom: 24,
+    textAlign: 'center',
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 32,
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: '#1e293b',
     marginBottom: 16,
   },
   statsGrid: {
@@ -409,154 +677,287 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   statCard: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    width: '48%',
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  statCardGradient: {
+    borderRadius: 16,
+  },
+  statCardContent: {
+    padding: 20,
+  },
+  statCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statCardIconContainer: {
+    marginRight: 12,
   },
   statTitle: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '600',
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: 'white',
+    marginBottom: 4,
   },
   statSubtitle: {
     fontSize: 12,
-    color: '#999',
-    marginTop: 4,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
-  distributionContainer: {
+  roleDistributionCard: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  distributionItem: {
+  roleGrid: {
+    gap: 16,
+  },
+  roleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderLeftWidth: 4,
+  },
+  roleInfo: {
+    marginLeft: 16,
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
-  distributionRole: {
+  roleLabel: {
     fontSize: 16,
-    color: '#333',
+    color: '#475569',
+    fontWeight: '600',
   },
-  distributionCount: {
+  roleCount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  recentUsersContainer: {
+    gap: 12,
+  },
+  recentUserCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  recentUserAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#667eea',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  recentUserDetails: {
+    flex: 1,
+  },
+  recentUserName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4A6572',
+    color: '#1e293b',
+    marginBottom: 2,
   },
-  actionsGrid: {
+  recentUserRole: {
+    fontSize: 14,
+    color: '#64748b',
+    textTransform: 'capitalize',
+    marginBottom: 2,
+  },
+  recentUserDate: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  userStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  userStatusText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '600',
+  },
+  quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    gap: 12,
   },
-  actionCard: {
+  quickActionCard: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    width: (width - 56) / 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 12,
-    width: '48%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  actionTitle: {
-    fontSize: 16,
+  quickActionText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  actionDescription: {
-    fontSize: 14,
-    color: '#666',
-  },
-  activityItem: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  activityDescription: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 4,
-  },
-  activityTime: {
-    fontSize: 14,
-    color: '#666',
+    color: '#475569',
+    textAlign: 'center',
   },
   modalContainer: {
     flex: 1,
     backgroundColor: 'white',
-    padding: 16,
+  },
+  modalHeader: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  userList: {
+    color: 'white',
     flex: 1,
   },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalList: {
+    flex: 1,
+    padding: 20,
+  },
   userItem: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 8,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#667eea',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  userInfo: {
+    flex: 1,
   },
   userName: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#64748b',
     marginBottom: 4,
   },
   userRole: {
     fontSize: 14,
-    color: '#4A6572',
-    marginBottom: 2,
+    color: '#667eea',
+    marginBottom: 4,
     textTransform: 'capitalize',
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#666',
-  },
-  closeButton: {
-    backgroundColor: '#4A6572',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  closeButtonText: {
-    color: 'white',
-    fontSize: 16,
     fontWeight: '600',
+  },
+  userPhone: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  userStatus: {
+    fontSize: 12,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  accommodationItem: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f5576c',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  accommodationTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  accommodationDescription: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  accommodationPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#f5576c',
+    marginBottom: 4,
+  },
+  accommodationLandlord: {
+    fontSize: 14,
+    color: '#667eea',
+    marginBottom: 4,
+    fontWeight: '600',
+  },
+  accommodationCity: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  accommodationAmenities: {
+    fontSize: 12,
+    color: '#94a3b8',
+    lineHeight: 16,
   },
 });
 

@@ -33,8 +33,17 @@ const FoodProvidersScreen = ({ navigation }) => {
     filterProviders();
   }, [providers, searchQuery, selectedCategory]);  const fetchFoodProviders = async () => {
     try {
-      console.log('Fetching food providers from database...');
-      const response = await foodAPI.getAll();
+      console.log('Fetching approved food providers from database...');
+      
+      // Only fetch admin-approved food providers for students
+      const params = {
+        status: 'approved',
+        adminApproved: true,
+        visibleToStudents: true,
+        isActive: true
+      };
+      
+      const response = await foodAPI.getAll(params);
       console.log('Food providers API response:', response);
       
       // Handle different response structures
@@ -47,14 +56,17 @@ const FoodProvidersScreen = ({ navigation }) => {
         providersData = response.providers;
       }
       
-      // Filter out invalid providers
+      // Filter out invalid providers and ensure only approved ones
       const validProviders = providersData.filter(provider => 
         provider && 
         typeof provider === 'object' && 
-        (provider.businessName || provider.name)
+        (provider.businessName || provider.name) &&
+        (provider.approvalStatus === 'approved' || provider.status === 'approved') &&
+        provider.adminApproved !== false &&
+        provider.visibleToStudents !== false
       );
       
-      console.log('Valid food providers loaded:', validProviders.length);
+      console.log('Valid approved food providers loaded:', validProviders.length);
       console.log('First provider:', validProviders[0]);
       setProviders(validProviders);
     } catch (error) {

@@ -41,13 +41,14 @@ const AccommodationSearchScreen = ({ navigation }) => {
       if (reset) {
         setLoading(true);
         setPage(1);
-      }
-
-      const params = {
+      }      const params = {
         page: reset ? 1 : page,
         limit: 10,
-        status: 'available',
-      };      if (searchQuery.trim()) {
+        status: 'approved', // Only show admin-approved accommodations
+        adminApproved: true, // Ensure admin has approved the accommodation
+        visibleToStudents: true, // Only show items visible to students
+        isActive: true // Only show active accommodations
+      };if (searchQuery.trim()) {
         params.search = searchQuery.trim();
       }
 

@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base URL of the backend API
-const API_URL = 'https://staykaru-backend-60ed08adb2a7.herokuapp.com';
+const API_URL = 'https://staykaru-backend-60ed08adb2a7.herokuapp.com/api';
 
 // Create an axios instance with default config
 const apiClient = axios.create({
@@ -95,8 +95,7 @@ export const authAPI = {
       throw error.response?.data || error;
     }
   },
-  
-  // Logout user
+    // Logout user
   logout: async () => {
     try {
       // Remove token from AsyncStorage
@@ -106,6 +105,51 @@ export const authAPI = {
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
+    }
+  },  // Social login
+  socialLogin: async (provider, token, role = 'student') => {
+    try {
+      const response = await apiClient.post('/auth/social-login', {
+        provider,
+        token: token,  // Backend expects 'token' field
+        // Additional fields that might be expected by backend
+        ...(role && { role })
+      });
+      
+      // Store the JWT token in AsyncStorage
+      if (response.data.access_token) {
+        await AsyncStorage.setItem('auth_token', response.data.access_token);
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Social login error:', error.response?.data || error);
+      throw error.response?.data || error;
+    }
+  },
+
+  // Forgot password
+  forgotPassword: async (email) => {
+    try {
+      const response = await apiClient.post('/auth/forgot-password', { email });
+      return response.data;
+    } catch (error) {
+      console.error('Forgot password error:', error.response?.data || error);
+      throw error.response?.data || error;
+    }
+  },
+
+  // Reset password
+  resetPassword: async (token, newPassword) => {
+    try {
+      const response = await apiClient.post('/auth/reset-password', {
+        token,
+        newPassword
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Reset password error:', error.response?.data || error);
+      throw error.response?.data || error;
     }
   },
 };

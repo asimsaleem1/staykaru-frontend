@@ -198,9 +198,7 @@ const AnalyticsScreen: React.FC<AnalyticsProps> = ({ userRole, userId }) => {
           <Text style={styles.metricValue}>{analyticsData.averageStayDuration}</Text>
           <Text style={styles.metricLabel}>Avg Stay (days)</Text>
         </View>
-      </View>
-
-      {/* Bookings by Property */}
+      </View>      {/* Bookings by Property */}
       <View style={styles.chartCard}>
         <Text style={styles.chartTitle}>Bookings by Property</Text>
         <PieChart
@@ -214,6 +212,7 @@ const AnalyticsScreen: React.FC<AnalyticsProps> = ({ userRole, userId }) => {
           chartConfig={chartConfig}
           accessor="bookings"
           backgroundColor="transparent"
+          paddingLeft="15"
           style={styles.chart}
         />
       </View>
@@ -235,22 +234,20 @@ const AnalyticsScreen: React.FC<AnalyticsProps> = ({ userRole, userId }) => {
           <Text style={styles.metricValue}>Rs. {analyticsData.averageOrderValue}</Text>
           <Text style={styles.metricLabel}>Avg Order Value</Text>
         </View>
-      </View>
-
-      {/* Orders by Day */}
+      </View>      {/* Orders by Day */}
       <View style={styles.chartCard}>
         <Text style={styles.chartTitle}>Orders by Day</Text>
         <BarChart
           data={analyticsData.ordersByDay}
           width={screenWidth - 40}
           height={220}
+          yAxisLabel=""
+          yAxisSuffix=""
           chartConfig={chartConfig}
           style={styles.chart}
           showValuesOnTopOfBars
         />
-      </View>
-
-      {/* Popular Items */}
+      </View>      {/* Popular Items */}
       <View style={styles.chartCard}>
         <Text style={styles.chartTitle}>Popular Menu Items</Text>
         <PieChart
@@ -264,6 +261,7 @@ const AnalyticsScreen: React.FC<AnalyticsProps> = ({ userRole, userId }) => {
           chartConfig={chartConfig}
           accessor="orders"
           backgroundColor="transparent"
+          paddingLeft="15"
           style={styles.chart}
         />
       </View>

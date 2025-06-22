@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FormInput, FormButton } from '../../components/ui/FormElements';
 import { useAuth } from '../../context/AuthContext';
 import { AuthNavigationProp } from '../../types/navigation.types';
+import SocialLoginService from '../../services/socialLogin.service';
 
 // Define types for form values
 interface LoginFormValues {
@@ -37,12 +38,14 @@ const LoginSchema = Yup.object().shape({
 
 const LoginScreen = () => {
   const navigation = useNavigation<AuthNavigationProp>();
-  const { login, isLoading } = useAuth();
+  const { login, socialLogin, isLoading } = useAuth();
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
 
-  const handleLogin = async (values: LoginFormValues) => {    setError('');
+  const handleLogin = async (values: LoginFormValues) => {    
+    setError('');
     try {
       const result = await login(values);
       // Optionally save credentials if rememberMe is checked
@@ -50,6 +53,43 @@ const LoginScreen = () => {
       // Navigation handled by AuthContext/AppNavigator
     } catch (err: any) {
       setError(err.message || 'Login failed');
+    }
+  };
+
+  // Social login handlers
+  const handleGoogleLogin = async () => {
+    setError('');
+    setSocialLoading(true);
+    try {
+      const googleData = await SocialLoginService.signInWithGoogle();
+      
+      // Send the token to backend for verification and user creation/login
+      await socialLogin('google', googleData.token, 'student');
+      
+      // Successfully logged in - navigation will be handled by AuthContext
+      // All social logins redirect to student dashboard as per requirements
+    } catch (err: any) {
+      setError(err.message || 'Google login failed');
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
+  const handleFacebookLogin = async () => {
+    setError('');
+    setSocialLoading(true);
+    try {
+      const facebookData = await SocialLoginService.signInWithFacebook();
+      
+      // Send the token to backend for verification and user creation/login
+      await socialLogin('facebook', facebookData.token, 'student');
+      
+      // Successfully logged in - navigation will be handled by AuthContext
+      // All social logins redirect to student dashboard as per requirements
+    } catch (err: any) {
+      setError(err.message || 'Facebook login failed');
+    } finally {
+      setSocialLoading(false);
     }
   };
 
@@ -106,7 +146,8 @@ const LoginScreen = () => {
                       <Text style={{ color: '#2196F3', fontWeight: 'bold' }}>{showPassword ? 'Hide' : 'Show'}</Text>
                     </TouchableOpacity>
                   }
-                />                <View style={styles.optionsRow}>
+                />                
+                <View style={styles.optionsRow}>
                   <TouchableOpacity 
                     style={styles.rememberMeContainer}
                     onPress={() => setRememberMe(!rememberMe)}
@@ -119,21 +160,38 @@ const LoginScreen = () => {
                   <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
                     <Text style={styles.forgotPassword}>Forgot Password?</Text>
                   </TouchableOpacity>
-                </View>
-                <FormButton
+                </View>                <FormButton
                   title="Sign In"
                   onPress={handleSubmit}
-                  disabled={isLoading}
+                  disabled={isLoading || socialLoading}
                   loading={isLoading}
                 />
-                {/* Social login buttons (UI only) */}                <View style={styles.socialLogin}>
+                
+                {/* Social login buttons with functionality */}
+                <View style={styles.socialLogin}>
                   <Text style={styles.orText}>Or continue with</Text>
                   <View style={styles.socialButtons}>
-                    <TouchableOpacity style={styles.socialButton}>
-                      <Ionicons name="logo-google" size={24} color="#DB4437" />
+                    <TouchableOpacity 
+                      style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                      onPress={handleGoogleLogin}
+                      disabled={isLoading || socialLoading}
+                    >
+                      {socialLoading ? (
+                        <ActivityIndicator size="small" color="#DB4437" />
+                      ) : (
+                        <Ionicons name="logo-google" size={24} color="#DB4437" />
+                      )}
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.socialButton}>
-                      <Ionicons name="logo-facebook" size={24} color="#4267B2" />
+                    <TouchableOpacity 
+                      style={[styles.socialButton, socialLoading && styles.socialButtonDisabled]}
+                      onPress={handleFacebookLogin}
+                      disabled={isLoading || socialLoading}
+                    >
+                      {socialLoading ? (
+                        <ActivityIndicator size="small" color="#4267B2" />
+                      ) : (
+                        <Ionicons name="logo-facebook" size={24} color="#4267B2" />
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -224,8 +282,7 @@ const styles = StyleSheet.create({
   socialButtons: {
     flexDirection: 'row',
     gap: 16,
-  },
-  socialButton: {
+  },  socialButton: {
     backgroundColor: '#fff',
     borderRadius: 24,
     padding: 10,
@@ -235,6 +292,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  socialButtonDisabled: {
+    opacity: 0.6,
   },
   socialIcon: {
     width: 28,
@@ -249,7 +309,8 @@ const styles = StyleSheet.create({
   footerText: {
     color: '#7f8c8d',
     fontSize: 16,
-  },  footerLink: {
+  },  
+  footerLink: {
     color: '#2196F3',
     fontSize: 16,
     fontWeight: '600',

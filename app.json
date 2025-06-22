@@ -15,22 +15,28 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.staykaru.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.stekarofrontend"
+      "package": "com.staykaru.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "staykaru",
     "jsEngine": "hermes",
     "sdkVersion": "53.0.0",
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-web-browser",
+      [
+        "expo-auth-session"
+      ]
     ]
   }
 }

@@ -50,24 +50,25 @@ export const AuthProvider = ({ children }) => {
     };
 
     loadUser();
-  }, []);
-  // Register function
+  }, []);  // Register function
   const register = async (userData) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      // Ensure all required fields are present according to the API contract
+      // Ensure all required fields are present according to the backend API
       const registerData = {
         name: userData.name,
         email: userData.email,
         password: userData.password,
-        role: userData.role || 'student',
+    role: userData.role || 'student',
         phone: userData.phone,
-        dateOfBirth: userData.dateOfBirth,
+        countryCode: userData.countryCode || '+92', // Required field
         gender: userData.gender,
-        university: userData.university,
-        address: userData.address
+        // Optional fields - only include if provided
+        ...(userData.dateOfBirth && { dateOfBirth: userData.dateOfBirth }),
+        ...(userData.university && { university: userData.university }),
+        ...(userData.address && { address: userData.address })
       };
       
       const response = await authAPI.register(registerData);
@@ -104,7 +105,6 @@ export const AuthProvider = ({ children }) => {
       setIsLoading(false);
     }
   };
-
   // Logout function
   const logout = async () => {
     setIsLoading(true);
@@ -119,6 +119,73 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.removeItem('user_data');
     } catch (err) {
       setError(err.message || 'Logout failed');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };  // Social login function
+  const socialLogin = async (provider, token, role = 'student') => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log(`Attempting social login with ${provider}...`);
+      const response = await authAPI.socialLogin(provider, token, role);
+      
+      // Get user profile after successful social login
+      const profileData = await authAPI.getProfile();
+      setUser(profileData.user);
+      
+      // Save user data for offline access
+      await AsyncStorage.setItem('user_data', JSON.stringify(profileData.user));
+      
+      return response;
+    } catch (err) {
+      console.error('Social login error:', err);
+      
+      // Enhanced error handling based on error response
+      if (err.response?.status === 404) {
+        setError('Social login is not supported by the backend. Please use email login.');
+      } else if (err.response?.data?.message?.includes('configuration')) {
+        setError('Social login failed: Backend OAuth configuration is incomplete. Please try again later or use email login.');
+      } else if (err.message?.includes('configuration')) {
+        setError('Social login failed: OAuth configuration issue. Please try again later.');
+      } else {
+        setError(err.message || 'Social login failed');
+      }
+      
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Forgot password function
+  const forgotPassword = async (email) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await authAPI.forgotPassword(email);
+      return response;
+    } catch (err) {
+      setError(err.message || 'Failed to send password reset email');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Reset password function
+  const resetPassword = async (token, newPassword) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await authAPI.resetPassword(token, newPassword);
+      return response;
+    } catch (err) {
+      setError(err.message || 'Failed to reset password');
       throw err;
     } finally {
       setIsLoading(false);
@@ -138,6 +205,9 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
+    socialLogin,
+    forgotPassword,
+    resetPassword,
     hasRole,
     isAuthenticated: !!user,
   };
