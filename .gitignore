@@ -1,1 +1,77 @@
-node_modules
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# Local env files
+.env*.local
+
+# Typescript
+*.tsbuildinfo
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+
+# Test files
+test-*.js
+*-test.js
+*.test.js
+
+# Documentation (except essential)
+ADMIN_*.md
+BACKEND_*.md
+COMPLETE_*.md
+ERROR_*.md
+FINAL_*.md
+FOOD_*.md
+FRONTEND_*.md
+IMPLEMENTATION_*.md
+NETWORK_*.md
+NULL_*.md
+PROJECT_*.md
+REACT_*.md
+REAL_*.md
+REGISTRATION_*.md
+SDP_*.md
+SOCIAL_*.md
+UPDATES_*.md
+VERIFICATION_*.md
+ANALYTICS_*.md
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# VS Code specific
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
